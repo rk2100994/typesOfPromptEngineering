@@ -1,0 +1,82 @@
+import openai
+import os
+from dotenv import load_dotenv, find_dotenv
+
+load_dotenv('D:/.env')
+
+OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+
+import openai
+openai.api_key = OPENAI_API_KEY
+
+from datasets import load_dataset
+
+# Load the dataset from Hugging Face
+dataset = load_dataset("bigbio/med_qa", split="train",trust_remote_code=True)
+
+# Display some sample data
+dataset_df = dataset.to_pandas()
+
+# Check the first few rows of the dataset
+print(dataset_df[['question', 'answer']])
+
+#Define prompting funtions
+
+def zero_shot_prompting(question):
+    return f"Question: {question}\nAnswer:"
+def one_shot_prompting(example_question,example_answer, question):
+    return f"Example Question: {example_question}\nExample Answer: {example_answer}\n\nQuestion: {question}\nAnswer:"
+def few_shot_prompting(examples, question):
+    prompt = ""
+    for ex in examples:
+        prompt += f"Example Question: {ex['question']}\nExample Answer: {ex['answer']}\n\n"
+    prompt += f"Question: {question}\nAnswer:"
+    return prompt
+
+def query_openai(prompt, model="gpt-3.5-turbo"):
+    try:
+        response = openai.chat.completion.create(
+            model=model,  # The GPT model to use (e.g., "gpt-3.5-turbo" or "gpt-4")
+            messages=[    # The messages list defines the conversation
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=150,  # Maximum number of tokens in the response
+            temperature=0.7  # Controls the randomness of the output (higher is more random)
+        )
+        # Extract the generated text from the response
+        response_text = response["choices"][0]["message"]["content"].strip()
+        return response_text
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return None
+
+# Test the different techniques with GPT-3.5 Turbo and GPT-4
+example_question = dataset_df.iloc[0]["question"]
+example_answer = dataset_df.iloc[0]["answer"]
+
+# Zero-shot prompting
+zero_shot_prompt = zero_shot_prompting(example_question)
+zero_shot_response_gpt35 = query_openai(zero_shot_prompt, model="gpt-3.5-turbo")
+zero_shot_response_gpt4 = query_openai(zero_shot_prompt, model="gpt-4")
+
+# One-shot prompting
+one_shot_prompt = one_shot_prompting(dataset_df.iloc[1]["question"], dataset_df.iloc[1]["answer"], example_question)
+one_shot_response_gpt35 = query_openai(one_shot_prompt, model="gpt-3.5-turbo")
+one_shot_response_gpt4 = query_openai(one_shot_prompt, model="gpt-4")
+
+
+# Few-shot prompting (using 3 examples)
+few_shot_prompt = few_shot_prompting(dataset_df.iloc[:3].to_dict(orient="records"), example_question)
+few_shot_response_gpt35 = query_openai(few_shot_prompt, model="gpt-3.5-turbo")
+few_shot_response_gpt4 = query_openai(few_shot_prompt, model="gpt-4")
+
+# Print results for comparison
+print("Zero-Shot Response (GPT-3.5):", zero_shot_response_gpt35)
+print("Zero-Shot Response (GPT-4):", zero_shot_response_gpt4)
+
+print("One-Shot Response (GPT-3.5):", one_shot_response_gpt35)
+print("One-Shot Response (GPT-4):", one_shot_response_gpt4)
+
+print("Few-Shot Response (GPT-3.5):", few_shot_response_gpt35)
+print("Few-Shot Response (GPT-4):", few_shot_response_gpt4)
